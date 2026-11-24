@@ -10,9 +10,10 @@ This project was developed for the AssurPrime data challenge, based on an agricu
 
 The target is decomposed as:
 
-\[
+$$
 \text{CHARGE} = \text{FREQ} \times \text{CM} \times \text{ANNEE ASSURANCE}
-\]
+$$
+
 
 where `FREQ` is claim frequency, `CM` is average claim cost, and `ANNEE ASSURANCE` represents the contract's exposure duration during the financial year.
 
