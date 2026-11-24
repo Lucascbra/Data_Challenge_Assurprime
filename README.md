@@ -1,81 +1,99 @@
-# AssurPrime Data Challenge — Fire Pure-Premium Modelling
+# AssurPrime — Agricultural Insurance Claims Modeling
 
-Data challenge on multi-risk agricultural insurance (Pacifica, Crédit Agricole Assurances), carried out at École Centrale de Nantes by **Théa El Rostom, Agathe Guerrini-Touchais and Lucas Cabrera**.
+**Data Challenge project**  
+**Authors:** Théa El-Rostom · Agathe Guerrini-Touchais · Lucas Cabrera  
+**Report date:** 2 November 2026
 
-📄 Full write-up (French): [`reports/DataChallenge_Cabrera_Guerrini_El_Rostom.pdf`](reports/DataChallenge_Cabrera_Guerrini_El_Rostom.pdf)
-📓 Code: [`notebooks/notebook_fusionne_corrige_avec_stacking.ipynb`](notebooks/notebook_fusionne_corrige_avec_stacking.ipynb)
+## Project overview
 
-## Objective
+This project was developed for the AssurPrime data challenge, based on an agricultural multi-risk insurance use case. The objective is to predict the annual claim charge (`CHARGE`) for insured contracts and compare alternative machine-learning approaches with the insurer's Generalized Linear Model (GLM) benchmark.
 
-Predict the annual claim cost (`CHARGE`) of agricultural fire-insurance contracts and beat the insurer's GLM benchmark. The target decomposes as:
+The target is decomposed as:
 
-```
-CHARGE = FREQ × CM × ANNEE_ASSURANCE
-```
+\[
+\text{CHARGE} = \text{FREQ} \times \text{CM} \times \text{ANNEE ASSURANCE}
+\]
 
-(claim frequency × average claim cost × exposure over the policy year). Models are ranked on a single metric, **RMSE** on `CHARGE`, and also judged on interpretability and business constraints (GDPR, no black-box models).
+where `FREQ` is claim frequency, `CM` is average claim cost, and `ANNEE ASSURANCE` represents the contract's exposure duration during the financial year.
 
-**Benchmark:** Poisson GLM (frequency, log link) + Tweedie GLM (average cost, log link).
-
-## Data
-
-- 383,610 training contracts, ~370 explanatory variables: contract data (activity, guarantees, insured capital, surfaces, prevention measures), geography, CORINE land-use, demographics, building geometry, and weather (temperature, wind, rainfall).
-- Highly skewed target: ~90% of contracts have zero claims, a few very large claims dominate the error. Many columns are sparsely filled.
-- **The data is not included in this repository** (see [Reproducing](#reproducing)).
-
-## Methodology
-
-1. **Preprocessing** — missing values set to `0` (numeric) / `-999` (categorical); `ID` and `ANNEE_ASSURANCE` removed from features; negative `CM` clipped to 0 (required by Tweedie). One-hot encoding + standardisation for GLMs, `CountEncoder` for scikit-learn trees, native categorical handling for LightGBM.
-2. **Models tested**
-   - GLM reference (Poisson / Tweedie), penalty tuned by `GridSearchCV`
-   - Random Forest / Gradient Boosting pairs (RF-GB, RF-RF, GB-GB, GB-RF) compared by 80/20 split and K-Fold CV
-   - LightGBM (Poisson / Tweedie), ~25 → 4 min runtime versus scikit-learn boosting; Bayesian hyperparameter search with Optuna
-   - Lasso fitted directly on `CHARGE`
-   - Discarded: KNN (memory), linear regression on `FREQ` (R² ≈ 0.003, negative predictions)
-3. **Stacking** — out-of-fold predictions of three base approaches (GLM, course models, LightGBM) combined by a linear meta-model, compared two ways: non-negative least squares (K-Fold) and Ridge with λ selected by **exact closed-form Leave-One-Out** error, `(ŷᵢ − yᵢ) / (1 − hᵢᵢ)`, verified against brute-force LOO on a subsample.
-
-## Key findings
-
-| Model | RMSE |
-|---|---|
-| GLM Poisson / Tweedie (reference) | 6802.77 |
-| GB-GB (80/20 split) | 6662.10 |
-| GB-GB (K-Fold) | 6802.29 |
-| RF-RF (K-Fold) | 7002.68 |
-| LightGBM Poisson / Tweedie | 6802.64 |
-| LightGBM + Bayesian optimisation | 6794.38 |
-| Stacking, non-negative LS (5-fold, notebook) | 6798.50 |
-| Stacking, Ridge + exact LOO (notebook) | 6798.54 |
-| **Lasso on `CHARGE` (α = 10)** | **6795.84** |
-
-- Gaps between well-tuned models are under ~10 RMSE points: the error is dominated by a handful of very large claims.
-- The 80/20 split flattered tree models; with K-Fold CV they fall back to the benchmark level. Unconstrained RF-RF overfits extreme claims and is clearly worst.
-- Further hyperparameter tuning slightly *degraded* public leaderboard scores (overfitting to train); the Lasso gave the real improvement.
-- **Retained approach: Lasso** — competitive accuracy while remaining interpretable, which matters for a regulated insurer.
-- Limitations: missing values imputed as 0 with no feature engineering, FREQ and CM tuned separately though evaluated through their product, CM model trained on all contracts including non-claims.
+The evaluation metric is **Root Mean Squared Error (RMSE)**. The dataset described in the report contains 383,610 training contracts and approximately 370 explanatory variables.
 
 ## Repository structure
 
-```
+```text
 Data_Challenge_Assurprime/
-├── notebooks/   # merged notebook: GLM, RF/GB, LightGBM, stacking, Optuna, Lasso
-├── reports/     # final report (PDF, in French)
-├── data/        # place challenge CSVs here (git-ignored)
-├── README.md
-└── .gitignore
+├── notebooks/
+│   └── notebook_fusionne_corrige_avec_stacking.ipynb
+├── reports/
+│   └── DataChallenge_Cabrera_Guerrini_El Rostom.pdf
+├── .gitignore
+└── README.md
 ```
 
-## Reproducing
+## Methodology
 
-1. Obtain the challenge files (`train_input.csv`, `train_output.csv`, `test_input.csv`) and place them in the notebook's working directory (or `data/`, adjusting paths).
-2. Install dependencies:
-   ```bash
-   pip install numpy pandas scikit-learn lightgbm optuna category_encoders jupyter
-   ```
-3. Run `notebooks/notebook_fusionne_corrige_avec_stacking.ipynb` top to bottom. The RF/GB and stacking sections are the slowest.
+### 1. Data preparation and feature processing
 
-## Authors
+- Handle missing numerical values by replacing them with `0` and missing categorical values with `-999`.
+- Exclude identifier (`ID`) and exposure (`ANNEE ASSURANCE`) fields from the explanatory variables; exposure is used when reconstructing the final claim charge.
+- Clip negative average-claim-cost targets to zero for compatibility with the Tweedie model.
+- Use one-hot encoding for GLMs, count encoding for tree-based models, and native categorical handling for LightGBM.
+- Standardize numerical features for the GLM workflow.
 
-Théa El Rostom · Agathe Guerrini-Touchais · Lucas Cabrera — École Centrale de Nantes, 2026.
+### 2. Models evaluated
 
-*Generative AI (Gemini, Claude) was used for literature search, debugging and rewording; see the report's appendix.*
+- **Benchmark GLMs:** Poisson regression with a log link for claim frequency and Tweedie regression with a log link for average claim cost.
+- **Tree-based models:** Random Forest and scikit-learn Gradient Boosting, evaluated through different frequency/cost model pairings.
+- **LightGBM:** Poisson and Tweedie models, with native categorical-variable handling and hyperparameter optimization.
+- **Lasso:** Direct regularized regression on `CHARGE`, using an L1 penalty.
+- **Stacking:** Out-of-fold predictions from the GLM benchmark, the selected course-model combination, and LightGBM are combined by a linear meta-model. Two approaches are explored: non-negative least squares and Ridge regression with its regularization parameter selected using exact Leave-One-Out calculations.
+
+### 3. Validation and optimization
+
+The work compares an initial 80/20 train-validation split with 3-fold cross-validation for base-model selection and hyperparameter search. The stacking meta-model is also evaluated using cross-validation; the Ridge regularization parameter is tuned using the exact Leave-One-Out formula for a linear model with three inputs.
+
+## Key findings
+
+The report's comparison table gives the following RMSE values:
+
+| Model | RMSE |
+|---|---:|
+| Poisson GLM + Tweedie GLM (benchmark) | 6,802.77 |
+| Random Forest frequency + Gradient Boosting cost (80/20 split) | 6,665.19 |
+| Gradient Boosting frequency + Gradient Boosting cost (80/20 split) | 6,662.10 |
+| Random Forest frequency + Random Forest cost (K-Fold) | 7,002.68 |
+| Bayesian-optimized LightGBM (Poisson + Tweedie) | 6,794.38 |
+| Lasso | **6,795.84** |
+
+Main observations reported by the team:
+
+- The Gradient Boosting pairings performed better than the benchmark on the initial 80/20 split, while the Random Forest–Random Forest pairing generalized poorly under K-Fold validation.
+- LightGBM substantially reduced execution time in the reported setup (approximately 25 minutes to 4 minutes), but did not materially outperform the other approaches on RMSE.
+- Bayesian optimization slightly improved the LightGBM result compared with the non-Bayesian LightGBM result.
+- Lasso was retained as the preferred direct-charge approach in the report, with an RMSE of 6,795.84, and was valued for its regularization and interpretability.
+
+**Metric context:** the report distinguishes scores obtained on a single 80/20 split, cross-validation scores, and training-set reference scores. These values should not be treated as directly interchangeable. The report does not provide a final public leaderboard score; none is inferred here.
+
+## Limitations and further work
+
+The report highlights several limitations:
+
+- RMSE is highly sensitive to a small number of very large claims, while most contracts have a zero charge.
+- Replacing missing values with fixed values does not distinguish missing observations from genuine zeros.
+- No additional engineered features were created.
+- Hyperparameters for frequency and average cost were optimized separately, although the final metric is computed on their product.
+- The average-cost model was trained on all contracts, including contracts with no claim.
+- More work is needed to ensure non-negative and well-calibrated cost predictions and to assess generalization on unseen data.
+
+Potential next steps include richer missing-value indicators and feature engineering, direct optimization against the final charge metric, and more robust validation focused on the heavy-tailed claim distribution.
+
+## Files
+
+- [`notebooks/notebook_fusionne_corrige_avec_stacking.ipynb`](notebooks/notebook_fusionne_corrige_avec_stacking.ipynb): consolidated notebook covering preprocessing, benchmark GLMs, tree-based models, LightGBM, stacking, Bayesian optimization, and Lasso.
+- [`reports/DataChallenge_Cabrera_Guerrini_El%20Rostom.pdf`](reports/DataChallenge_Cabrera_Guerrini_El%20Rostom.pdf): final project report (French).
+
+## Reproducibility
+
+The notebook expects the challenge input files and supplementary resources described in the report. Those source datasets are not included in this repository. Place the required files in the paths expected by the notebook before running it, and execute the notebook from top to bottom so that model objects and out-of-fold predictions are available to the stacking section.
+
+The notebook uses Python data-science and machine-learning libraries, including pandas, NumPy, scikit-learn, and LightGBM. Exact package versions and the original challenge datasets were not specified as repository artifacts.
